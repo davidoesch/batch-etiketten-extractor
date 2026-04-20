@@ -25,7 +25,6 @@ def process_file(file_path: Path, output_dir: Path, client: genai.Client):
     if file_path.suffix.lower() not in SUPPORTED_EXTS:
         return
 
-    # --- NEW: RESUME CAPABILITY ---
     # Check if this file has already been processed successfully
     expected_json_path = output_dir / f"{file_path.stem}.json"
     if expected_json_path.exists():
@@ -45,16 +44,18 @@ def process_file(file_path: Path, output_dir: Path, client: genai.Client):
         print(f"\nFailed to read/crop image locally: {e}")
         return
 
-    # 2. STRICT ROW-BASED GEMINI PROMPT
+    # 2. STRICT ROW-BASED GEMINI PROMPT WITH BAILOUT
     prompt = """
-    Look at this cropped and rotated label. The label has two distinct columns of text separated by a vertical divider line or a column of "¦" characters.
+    Look at this cropped and rotated image. We are looking for a specific white label with dot-matrix text.
 
-    The text is arranged in a strict 3-row grid. The horizontal alignment (the row) is critical. Do not shift text up if a line above it is blank.
+    CRITICAL: If the image does NOT contain a white label with text (for example, if it is just a grey sleeve, a logo, or blank), you MUST return empty strings ("") for ALL fields. DO NOT invent numbers or copy examples.
+
+    If the label IS present, it has two distinct columns of text separated by a vertical divider line or a column of "¦" characters. The text is arranged in a strict 3-row grid. The horizontal alignment (the row) is critical. Do not shift text up if a line above it is blank.
 
     Please extract the following information and return ONLY a valid JSON object with these exact keys:
 
-    - `id_number`: The 5 to 7 digit number (e.g., 108480, 110895, 111873).
-    - `hyphenated_code`: The hyphenated code (e.g., 2-OR-89, 2-OR-90).
+    - `id_number`: The 5 to 7 digit number.
+    - `hyphenated_code`: The hyphenated code (usually formatted like number-letters-number).
 
     - `field1`: Left Column, Row 1 (Top line)
     - `field2`: Left Column, Row 2 (Middle line)
@@ -80,15 +81,19 @@ def process_file(file_path: Path, output_dir: Path, client: genai.Client):
 
             result = json.loads(response.text)
 
-            # 3. MERGE FILENAME & LOG MISSING DATA
+            # 3. MERGE FILENAME & ABORT IF MISSING DATA
             result["filename"] = file_path.stem
 
             id_num = result.get("id_number", "").strip()
             hyph_code = result.get("hyphenated_code", "").strip()
+
             if not id_num or not hyph_code:
-                print(f"[Core fields missing: '{id_num}', '{hyph_code}']", end=" ", flush=True)
+                print(f"[Core fields missing: '{id_num}', '{hyph_code}'] -> Skipping JSON creation.", flush=True)
                 with open(output_dir / "error_files.txt", "a") as f:
                     f.write(f"MISSING_DATA: {file_path.name}\n")
+
+                # --- NEW: Immediately exit the function. Do not write the JSON file. ---
+                return
 
             # 4. SAVE JSON
             expected_json_path.write_text(json.dumps(result, indent=2), encoding="utf-8")
@@ -99,8 +104,6 @@ def process_file(file_path: Path, output_dir: Path, client: genai.Client):
         except APIError as e:
             error_msg = str(e)
             if '429' in error_msg or '503' in error_msg:
-                # --- NEW: EXPONENTIAL BACKOFF ---
-                # Attempt 1: 30s, Attempt 2: 60s, Attempt 3: 90s, etc.
                 wait_time = 30 * (attempt + 1)
 
                 if attempt == max_retries - 1:
@@ -142,7 +145,6 @@ def main():
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Only write the header if the file doesn't exist so we don't overwrite yesterday's errors
     error_log_path = output_dir / "error_files.txt"
     if not error_log_path.exists():
         with open(error_log_path, "w") as f:
@@ -166,7 +168,6 @@ def main():
     for idx, p in enumerate(files_to_process):
         process_file(p, output_dir, client)
 
-        # We only sleep if it actually did work (not skipped). The 4 seconds is to respect the 15 per minute limit.
         if idx < len(files_to_process) - 1:
             time.sleep(4)
 
