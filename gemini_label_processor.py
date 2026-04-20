@@ -20,7 +20,7 @@ except ImportError:
 # --- Configuration ---
 SUPPORTED_EXTS = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp", ".webp"}
 
-def process_file(file_path: Path, output_dir: Path, client: genai.Client):
+def process_file(file_path: Path, output_dir: Path, client: genai.Client, current_idx: int, total_files: int):
     """Slices the label, sends it to Gemini, and generates JSON. Safely skips already processed files."""
     if file_path.suffix.lower() not in SUPPORTED_EXTS:
         return
@@ -28,10 +28,10 @@ def process_file(file_path: Path, output_dir: Path, client: genai.Client):
     # Check if this file has already been processed successfully
     expected_json_path = output_dir / f"{file_path.stem}.json"
     if expected_json_path.exists():
-        print(f"Skipping: {file_path.name} (JSON already exists)")
+        print(f"Skipping {current_idx} of {total_files}: {file_path.name} (JSON already exists)")
         return
 
-    print(f"Processing: {file_path.name}...", end=" ", flush=True)
+    print(f"Processing {current_idx} of {total_files}: {file_path.name}...", end=" ", flush=True)
 
     # 1. LOCAL PRIVACY CROP & ROTATION
     try:
@@ -91,9 +91,7 @@ def process_file(file_path: Path, output_dir: Path, client: genai.Client):
                 print(f"[Core fields missing: '{id_num}', '{hyph_code}'] -> Skipping JSON creation.", flush=True)
                 with open(output_dir / "error_files.txt", "a") as f:
                     f.write(f"MISSING_DATA: {file_path.name}\n")
-
-                # --- NEW: Immediately exit the function. Do not write the JSON file. ---
-                return
+                return  # Instantly exit to prevent saving the empty JSON
 
             # 4. SAVE JSON
             expected_json_path.write_text(json.dumps(result, indent=2), encoding="utf-8")
@@ -158,17 +156,20 @@ def main():
     print("Files will NOT be moved or copied.\n")
 
     files_to_process = [p for p in input_dir.iterdir() if p.is_file() and p.suffix.lower() in SUPPORTED_EXTS]
+    total_files = len(files_to_process)
 
     if not files_to_process:
         print("No supported images found in input directory.")
         return
 
-    print(f"Found {len(files_to_process)} files in directory. Starting process...\n")
+    print(f"Found {total_files} files in directory. Starting process...\n")
 
     for idx, p in enumerate(files_to_process):
-        process_file(p, output_dir, client)
+        # Pass idx + 1 and the total_files down to the process function
+        process_file(p, output_dir, client, idx + 1, total_files)
 
-        if idx < len(files_to_process) - 1:
+        # Free Tier Rate Limit Management
+        if idx < total_files - 1:
             time.sleep(4)
 
     print("\nBatch processing complete! Check the output directory for JSON files and 'error_files.txt'.")
