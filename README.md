@@ -40,8 +40,8 @@ Implements retry logic with exponential backoff for HTTP 429 and 503 responses t
 ## Installation
 
 ```bash
-git clone https://github.com/davidoesch/gemini-label-processor.git
-cd gemini-label-processor
+git clone https://github.com/davidoesch/batch-etiketten-extractor.git
+cd batch-etiketten-extractor
 pip install pillow google-genai
 ```
 
@@ -129,5 +129,5 @@ Accuracy depends on image quality, contrast, and label alignment.
 
 ## License
 
-MIT License (or specify your preferred license)
+MIT License 
 
