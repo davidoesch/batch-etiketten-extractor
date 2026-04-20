@@ -1,0 +1,176 @@
+import os
+import sys
+import time
+import shutil
+import json
+import argparse
+from pathlib import Path
+
+# --- Dependencies ---
+try:
+    from PIL import Image
+    from google import genai
+    from google.genai import types
+    from google.genai.errors import APIError
+except ImportError:
+    print("Error: Missing required packages. Please run:")
+    print("pip install pillow google-genai")
+    sys.exit(1)
+
+# --- Configuration ---
+SUPPORTED_EXTS = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp", ".webp"}
+
+def process_file(file_path: Path, output_dir: Path, client: genai.Client):
+    """Slices the label, sends it to Gemini, and generates JSON. Safely skips already processed files."""
+    if file_path.suffix.lower() not in SUPPORTED_EXTS:
+        return
+
+    # --- NEW: RESUME CAPABILITY ---
+    # Check if this file has already been processed successfully
+    expected_json_path = output_dir / f"{file_path.stem}.json"
+    if expected_json_path.exists():
+        print(f"Skipping: {file_path.name} (JSON already exists)")
+        return
+
+    print(f"Processing: {file_path.name}...", end=" ", flush=True)
+
+    # 1. LOCAL PRIVACY CROP & ROTATION
+    try:
+        img = Image.open(file_path)
+        w, h = img.size
+        crop_box = (int(w * 0.70), 0, w, h)
+        label_crop = img.crop(crop_box)
+        label_crop = label_crop.transpose(Image.ROTATE_90)
+    except Exception as e:
+        print(f"\nFailed to read/crop image locally: {e}")
+        return
+
+    # 2. STRICT ROW-BASED GEMINI PROMPT
+    prompt = """
+    Look at this cropped and rotated label. The label has two distinct columns of text separated by a vertical divider line or a column of "¦" characters.
+
+    The text is arranged in a strict 3-row grid. The horizontal alignment (the row) is critical. Do not shift text up if a line above it is blank.
+
+    Please extract the following information and return ONLY a valid JSON object with these exact keys:
+
+    - `id_number`: The 5 to 7 digit number (e.g., 108480, 110895, 111873).
+    - `hyphenated_code`: The hyphenated code (e.g., 2-OR-89, 2-OR-90).
+
+    - `field1`: Left Column, Row 1 (Top line)
+    - `field2`: Left Column, Row 2 (Middle line)
+    - `field3`: Left Column, Row 3 (Bottom line)
+
+    - `field4`: Right Column, Row 1 (Top line). If there is no text horizontally aligned with Row 1 here, leave this empty.
+    - `field5`: Right Column, Row 2 (Middle line). This must horizontally align with field2.
+    - `field6`: Right Column, Row 3 (Bottom line). This must horizontally align with field3.
+
+    If a specific spot in the grid is empty, leave its value as an empty string (""). Do not return conversational text, just the JSON.
+    """
+
+    max_retries = 5
+    for attempt in range(max_retries):
+        try:
+            response = client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=[label_crop, prompt],
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                ),
+            )
+
+            result = json.loads(response.text)
+
+            # 3. MERGE FILENAME & LOG MISSING DATA
+            result["filename"] = file_path.stem
+
+            id_num = result.get("id_number", "").strip()
+            hyph_code = result.get("hyphenated_code", "").strip()
+            if not id_num or not hyph_code:
+                print(f"[Core fields missing: '{id_num}', '{hyph_code}']", end=" ", flush=True)
+                with open(output_dir / "error_files.txt", "a") as f:
+                    f.write(f"MISSING_DATA: {file_path.name}\n")
+
+            # 4. SAVE JSON
+            expected_json_path.write_text(json.dumps(result, indent=2), encoding="utf-8")
+            print(f"JSON Created -> {expected_json_path.name}")
+
+            break # Success, exit retry loop
+
+        except APIError as e:
+            error_msg = str(e)
+            if '429' in error_msg or '503' in error_msg:
+                # --- NEW: EXPONENTIAL BACKOFF ---
+                # Attempt 1: 30s, Attempt 2: 60s, Attempt 3: 90s, etc.
+                wait_time = 30 * (attempt + 1)
+
+                if attempt == max_retries - 1:
+                    print(f"\n[FATAL] Hit max retries for {file_path.name}. Likely hit Daily Quota.")
+                    with open(output_dir / "error_files.txt", "a") as f:
+                        f.write(f"API_QUOTA_FAILED: {file_path.name}\n")
+                    break
+
+                print(f"\n[Attempt {attempt+1}/{max_retries}] Server busy or Rate Limit. Pausing for {wait_time} seconds...")
+                time.sleep(wait_time)
+            else:
+                print(f"\nGemini API Error: {e}")
+                with open(output_dir / "error_files.txt", "a") as f:
+                    f.write(f"UNEXPECTED_API_ERROR: {file_path.name}\n")
+                break
+        except Exception as e:
+            print(f"\nFailed to parse response: {e}")
+            with open(output_dir / "error_files.txt", "a") as f:
+                f.write(f"PARSE_ERROR: {file_path.name}\n")
+            break
+
+def main():
+    parser = argparse.ArgumentParser(description="Consolidate label data and log failures locally without moving files.")
+    parser.add_argument("input_dir", type=str, help="Folder containing incoming photos")
+    parser.add_argument("output_dir", type=str, help="Folder where JSON metadata will be created")
+
+    args = parser.parse_args()
+
+    input_dir = Path(args.input_dir)
+    output_dir = Path(args.output_dir)
+
+    if not input_dir.exists():
+        print(f"Error: Input directory '{input_dir}' does not exist.")
+        sys.exit(1)
+
+    if not os.environ.get("GEMINI_API_KEY"):
+        print("Error: GEMINI_API_KEY environment variable not set.")
+        sys.exit(1)
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Only write the header if the file doesn't exist so we don't overwrite yesterday's errors
+    error_log_path = output_dir / "error_files.txt"
+    if not error_log_path.exists():
+        with open(error_log_path, "w") as f:
+            f.write("# Error Log - Failed files\n")
+
+    client = genai.Client()
+
+    print("=== Bulk Label Metadata Consolidation ===")
+    print(f"Input Images:   {input_dir}")
+    print(f"Output Metadata: {output_dir}")
+    print("Files will NOT be moved or copied.\n")
+
+    files_to_process = [p for p in input_dir.iterdir() if p.is_file() and p.suffix.lower() in SUPPORTED_EXTS]
+
+    if not files_to_process:
+        print("No supported images found in input directory.")
+        return
+
+    print(f"Found {len(files_to_process)} files in directory. Starting process...\n")
+
+    for idx, p in enumerate(files_to_process):
+        process_file(p, output_dir, client)
+
+        # We only sleep if it actually did work (not skipped). The 4 seconds is to respect the 15 per minute limit.
+        if idx < len(files_to_process) - 1:
+            time.sleep(4)
+
+    print("\nBatch processing complete! Check the output directory for JSON files and 'error_files.txt'.")
+
+if __name__ == "__main__":
+    main()
