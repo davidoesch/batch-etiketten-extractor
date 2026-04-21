@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Label QA Validator - Atelier Reding</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <link
+        href="https://cdn.prod.website-files.com/644be81ede62f758d359ff7d/css/atelierreding.webflow.shared.8f5fd808b.min.css"
+        rel="stylesheet" type="text/css">
+
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #f9f9f9;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            color: #222;
+        }
+
+        header {
+            background: #ffffff;
+            padding: 15px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-shrink: 0;
+            border-bottom: 1px solid #eaeaea;
+        }
+
+        header h2 {
+            margin: 0;
+            font-weight: 400;
+            font-size: 1.4em;
+            letter-spacing: 0.02em;
+        }
+
+        .setup-panel {
+            padding: 20px 30px;
+            background: #ffffff;
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            border-bottom: 1px solid #eaeaea;
+        }
+
+        .main-container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .image-panel {
+            flex: 0 0 50%;
+            background: #111;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* THE FIX: Added flex-shrink to protect the wrapper */
+        #pan-zoom-wrapper {
+            transform-origin: center center;
+            cursor: grab;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        #pan-zoom-wrapper:active {
+            cursor: grabbing;
+        }
+
+        /* THE FIX: Forced override of Webflow's global max-width: 100% on images */
+        #current-image {
+            transform: rotate(-90deg);
+            display: block;
+            max-width: none !important;
+            max-height: none !important;
+            width: auto !important;
+            height: auto !important;
+            flex-shrink: 0;
+        }
+
+        .zoom-controls {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            display: flex;
+            gap: 8px;
+            z-index: 10;
+            background: rgba(0, 0, 0, 0.4);
+            padding: 8px;
+            border-radius: 4px;
+            backdrop-filter: blur(4px);
+        }
+
+        .zoom-controls button {
+            background: transparent;
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            padding: 6px 12px;
+            cursor: pointer;
+            border-radius: 3px;
+            font-size: 1.1em;
+            transition: background 0.2s;
+        }
+
+        .zoom-controls button:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .data-panel {
+            flex: 0 0 50%;
+            padding: 40px;
+            background: #f9f9f9;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            box-sizing: border-box;
+        }
+
+        .progress {
+            font-size: 1em;
+            margin-bottom: 25px;
+            color: #666;
+            display: flex;
+            justify-content: space-between;
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 10px;
+        }
+
+        .action-btn {
+            padding: 12px 16px;
+            font-size: 0.95em;
+            cursor: pointer;
+            border: 1px solid #222;
+            border-radius: 0;
+            color: white;
+            background: #222;
+            width: 100%;
+            box-sizing: border-box;
+            transition: all 0.2s ease;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+        }
+
+        .btn-prev {
+            background: transparent;
+            color: #222;
+            border: 1px solid #ccc;
+            margin-bottom: 30px;
+        }
+
+        .btn-prev:hover {
+            background: #eee;
+            border-color: #aaa;
+        }
+
+        .btn-next {
+            margin-top: 15px;
+            padding: 16px;
+            font-size: 1em;
+        }
+
+        .btn-next:hover {
+            background: #444;
+        }
+
+        .btn-setup {
+            background: #222;
+            color: white;
+            padding: 10px 18px;
+            border: none;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-size: 0.85em;
+        }
+
+        .btn-setup:hover {
+            background: #444;
+        }
+
+        .label-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 25px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        label {
+            font-weight: 500;
+            margin-bottom: 6px;
+            color: #555;
+            font-size: 0.75em;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            padding: 10px 12px;
+            font-size: 0.95em;
+            border: 1px solid #ccc;
+            border-radius: 0;
+            box-sizing: border-box;
+            background: #fff;
+            transition: border-color 0.2s;
+        }
+
+        input[type="text"]:focus {
+            border-color: #222;
+            outline: none;
+        }
+
+        .bottom-codes {
+            display: flex;
+            justify-content: flex-end;
+            gap: 20px;
+        }
+
+        .bottom-codes .form-group {
+            width: 45%;
+        }
+
+        .qc-status {
+            margin-top: 30px;
+            padding: 15px 20px;
+            background: #fff;
+            border: 1px solid #ddd;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 1em;
+        }
+
+        .qc-status input[type="checkbox"] {
+            transform: scale(1.3);
+            cursor: pointer;
+        }
+
+        .save-indicator {
+            margin-top: 20px;
+            text-align: center;
+            font-size: 0.85em;
+        }
+
+        .file-path {
+            color: #888;
+            font-size: 0.85em;
+            word-break: break-all;
+            margin-top: 6px;
+            text-align: center;
+        }
+
+        .status-saved {
+            color: #555;
+        }
+
+        .status-unsaved {
+            color: #d9534f;
+            font-weight: 500;
+        }
+
+        .keyboard-shortcuts {
+            margin-top: auto;
+            font-size: 0.75em;
+            color: #888;
+            padding-top: 25px;
+            border-top: 1px solid #ddd;
+            line-height: 1.6;
+        }
+    </style>
+</head>
+
+<body>
+
+    <header>
+        <h2>Atelier Reding / Label QA</h2>
+        <div style="font-size: 0.8em; color: #888;">Direct File Editing Active (Chrome/Edge)</div>
+    </header>
+
+    <div class="setup-panel" id="setup-panel">
+        <div>
+            <button class="btn-setup" onclick="selectCSV()">1. Select Original CSV</button>
+            <span id="csv-file-name" style="margin-left: 15px; font-size: 0.9em; color: #555;">No file selected</span>
+        </div>
+        <div>
+            <label style="margin-right:15px; font-size: 0.85em;">2. Select Image Folder:</label>
+            <input type="file" id="image-folder" webkitdirectory directory multiple onchange="checkReadiness()"
+                style="font-size: 0.9em;">
+        </div>
+        <button class="btn-setup" id="btn-start" style="display:none; background:#444;" onclick="initializeQA()">Start
+            QA Process</button>
+    </div>
+
+    <div class="main-container" id="main-container" style="display:none;">
+        <div class="image-panel" id="image-panel">
+            <div id="pan-zoom-wrapper">
+                <img id="current-image" src="" alt="Image loading...">
+            </div>
+
+            <div class="zoom-controls">
+                <button onclick="zoomIn()" title="Zoom In">+</button>
+                <button onclick="zoomOut()" title="Zoom Out">-</button>
+                <button onclick="resetZoom()" title="Fit to Top"
+                    style="font-size: 0.85em; letter-spacing: 0.05em; text-transform: uppercase;">Fit Top</button>
+            </div>
+        </div>
+
+        <div class="data-panel">
+            <div class="progress">
+                <span id="record-counter">Record 0 of 0</span>
+                <span id="filename-display" style="color: #222; font-weight: 500;"></span>
+            </div>
+
+            <button class="action-btn btn-prev" onclick="prevRecord()">&#8592; Previous Record</button>
+
+            <form id="record-form" oninput="markUnsaved()">
+                <div class="label-grid">
+                    <div class="form-group"><label>Field 1</label><input type="text" id="field1"></div>
+                    <div class="form-group"><label>Field 4</label><input type="text" id="field4"></div>
+                    <div class="form-group"><label>Field 2</label><input type="text" id="field2"></div>
+                    <div class="form-group"><label>Field 5</label><input type="text" id="field5"></div>
+                    <div class="form-group"><label>Field 3</label><input type="text" id="field3"></div>
+                    <div class="form-group"><label>Field 6</label><input type="text" id="field6"></div>
+                </div>
+
+                <div class="bottom-codes">
+                    <div class="form-group"><label>Hyphenated Code</label><input type="text" id="hyphenated_code"
+                            style="text-align: right;"></div>
+                    <div class="form-group"><label>ID Number</label><input type="text" id="id_number"
+                            style="text-align: right; font-weight:500;"></div>
+                </div>
+
+                <div class="qc-status">
+                    <input type="checkbox" id="qc_ok" onchange="markUnsaved()">
+                    <label for="qc_ok" style="margin:0; cursor:pointer;">Mark as Checked & Correct</label>
+                </div>
+            </form>
+
+            <button class="action-btn btn-next" onclick="saveAndNextRecord()">Save & Next (Enter) &#8594;</button>
+
+            <div class="save-indicator">
+                <div id="save-status" class="status-saved">Status: Saved</div>
+                <div id="file-path-display" class="file-path">Target: Waiting...</div>
+            </div>
+
+            <div class="keyboard-shortcuts">
+                <strong>Keyboard Shortcuts</strong><br>
+                <code>Tab</code>: Next field &nbsp;|&nbsp;
+                <code>Enter</code>: Save & load next &nbsp;|&nbsp;
+                <code>Shift + Enter</code>: Save & go back<br>
+                <code>Mouse Wheel</code>: Zoom &nbsp;|&nbsp;
+                <code>Click & Drag</code>: Pan Image
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let csvFileHandle;
+        let csvData = [];
+        let imageFiles = {};
+        let currentIndex = 0;
+        let hasUnsavedChanges = false;
+
+        // --- PAN AND ZOOM LOGIC ---
+        let currentScale = 1;
+        let currentX = 0;
+        let currentY = 0;
+        let isDragging = false;
+        let startX, startY;
+        const wrapper = document.getElementById('pan-zoom-wrapper');
+        const imgElement = document.getElementById('current-image');
+        const imagePanel = document.getElementById('image-panel');
+
+        function updateTransform() {
+            wrapper.style.transform = `translate(${currentX}px, ${currentY}px) scale(${currentScale})`;
+        }
+
+        imgElement.onload = function () {
+            const panelWidth = imagePanel.clientWidth;
+            const panelHeight = imagePanel.clientHeight;
+
+            const visualWidth = imgElement.naturalHeight;
+            const visualHeight = imgElement.naturalWidth;
+
+            if (visualWidth > 0) {
+                currentScale = (panelWidth * 0.98) / visualWidth;
+            } else {
+                currentScale = 1;
+            }
+
+            currentX = 0;
+            const scaledHeight = visualHeight * currentScale;
+
+            if (scaledHeight > panelHeight) {
+                currentY = (scaledHeight - panelHeight) / 2 + 20;
+            } else {
+                currentY = 0;
+            }
+
+            updateTransform();
+        };
+
+        function zoomIn() { currentScale *= 1.2; updateTransform(); }
+        function zoomOut() { currentScale /= 1.2; updateTransform(); }
+        function resetZoom() { imgElement.dispatchEvent(new Event('load')); }
+
+        imagePanel.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const zoomSensitivity = 0.1;
+            const delta = e.deltaY > 0 ? -1 : 1;
+            currentScale *= Math.exp(delta * zoomSensitivity);
+            currentScale = Math.max(0.1, Math.min(currentScale, 15));
+            updateTransform();
+        });
+
+        imagePanel.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            startX = e.clientX - currentX;
+            startY = e.clientY - currentY;
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            currentX = e.clientX - startX;
+            currentY = e.clientY - startY;
+            updateTransform();
+        });
+
+        window.addEventListener('mouseup', () => { isDragging = false; });
+
+        // 1. Direct File System API
+        async function selectCSV() {
+            try {
+                [csvFileHandle] = await window.showOpenFilePicker({
+                    types: [{ description: 'CSV Files', accept: { 'text/csv': ['.csv'] } }]
+                });
+                const file = await csvFileHandle.getFile();
+                document.getElementById('csv-file-name').innerText = file.name;
+
+                Papa.parse(file, {
+                    header: true,
+                    skipEmptyLines: true,
+                    complete: function (results) {
+                        csvData = results.data;
+                        if (csvData.length > 0 && !('QC' in csvData[0])) {
+                            csvData.forEach(row => row['QC'] = '');
+                        }
+                        checkReadiness();
+                    }
+                });
+            } catch (err) {
+                console.error("File selection cancelled", err);
+            }
+        }
+
+        // 2. Check Readiness
+        function checkReadiness() {
+            const imgInput = document.getElementById('image-folder').files;
+            if (csvFileHandle && imgInput.length > 0) {
+                document.getElementById('btn-start').style.display = 'block';
+            }
+        }
+
+        // 3. Start QA
+        function initializeQA() {
+            const imgInput = document.getElementById('image-folder').files;
+            for (let i = 0; i < imgInput.length; i++) {
+                imageFiles[imgInput[i].name.toUpperCase()] = imgInput[i];
+            }
+
+            document.getElementById('setup-panel').style.display = 'none';
+            document.getElementById('main-container').style.display = 'flex';
+            document.getElementById('file-path-display').innerText = `Editing: ${csvFileHandle.name}`;
+
+            currentIndex = 0;
+            loadRecord(currentIndex);
+        }
+
+        // 4. Load Record into Form
+        function loadRecord(index) {
+            if (index < 0 || index >= csvData.length) return;
+
+            const record = csvData[index];
+            document.getElementById('record-counter').innerText = `${index + 1} / ${csvData.length}`;
+            document.getElementById('filename-display').innerText = record.filename + '.JPG';
+
+            const fields = ['id_number', 'hyphenated_code', 'field1', 'field2', 'field3', 'field4', 'field5', 'field6'];
+            fields.forEach(field => {
+                document.getElementById(field).value = record[field] || '';
+            });
+            document.getElementById('qc_ok').checked = (record['QC'] === 'ok');
+
+            const targetImageName = record.filename.toUpperCase() + '.JPG';
+            const targetImageNameAlt = record.filename + '.jpg';
+            const imgFile = imageFiles[targetImageName] || imageFiles[targetImageNameAlt] || imageFiles[record.filename + '.JPG'];
+
+            if (imgFile) {
+                imgElement.src = URL.createObjectURL(imgFile);
+            } else {
+                imgElement.src = '';
+                imgElement.alt = 'Image not found: ' + targetImageName;
+                resetZoom();
+            }
+
+            hasUnsavedChanges = false;
+            updateStatusUI();
+            document.getElementById('field1').focus();
+        }
+
+        // 5. Update Status Tracking
+        function markUnsaved() {
+            hasUnsavedChanges = true;
+            updateStatusUI();
+        }
+
+        function updateStatusUI() {
+            const statusDiv = document.getElementById('save-status');
+            if (hasUnsavedChanges) {
+                statusDiv.innerText = "Status: Unsaved Changes";
+                statusDiv.className = "status-unsaved";
+            } else {
+                statusDiv.innerText = "Status: Saved to CSV";
+                statusDiv.className = "status-saved";
+            }
+        }
+
+        // 6. Write Directly to Disk
+        async function writeToDisk() {
+            const record = csvData[currentIndex];
+            const fields = ['id_number', 'hyphenated_code', 'field1', 'field2', 'field3', 'field4', 'field5', 'field6'];
+            fields.forEach(field => {
+                record[field] = document.getElementById(field).value;
+            });
+            record['QC'] = document.getElementById('qc_ok').checked ? 'ok' : '';
+
+            const csvString = Papa.unparse(csvData);
+
+            try {
+                const writable = await csvFileHandle.createWritable();
+                await writable.write(csvString);
+                await writable.close();
+                hasUnsavedChanges = false;
+                updateStatusUI();
+            } catch (err) {
+                console.error("Failed to save file.", err);
+                alert("Failed to save! Please ensure the CSV is not open in Excel or another program.");
+            }
+        }
+
+        async function saveAndNextRecord() {
+            document.getElementById('qc_ok').checked = true;
+            await writeToDisk();
+
+            if (currentIndex < csvData.length - 1) {
+                currentIndex++;
+                loadRecord(currentIndex);
+            } else {
+                alert("You have reached the end of the records!");
+            }
+        }
+
+        async function prevRecord() {
+            if (hasUnsavedChanges) {
+                await writeToDisk();
+            }
+            if (currentIndex > 0) {
+                currentIndex--;
+                loadRecord(currentIndex);
+            }
+        }
+
+        document.addEventListener('keydown', function (event) {
+            if (document.getElementById('main-container').style.display !== 'none') {
+                if (event.key === 'Enter') {
+                    event.preventDefault();
+                    if (event.shiftKey) {
+                        prevRecord();
+                    } else {
+                        saveAndNextRecord();
+                    }
+                }
+            }
+        });
+    </script>
+</body>
+
+</html>
