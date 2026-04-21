@@ -50,11 +50,11 @@ def process_file(file_path: Path, output_dir: Path, client: genai.Client, curren
 
     CRITICAL: If the image does NOT contain a white label with text (for example, if it is just a grey sleeve, a logo, or blank), you MUST return empty strings ("") for ALL fields. DO NOT invent numbers or copy examples.
 
-    If the label IS present, it has two distinct columns of text separated by a vertical divider line or a column of "¦" characters. The text is arranged in a strict 3-row grid. The horizontal alignment (the row) is critical. Do not shift text up if a line above it is blank.
+    If the label IS present, it has two distinct columns of text separated by a vertical divider line or a column of "¦" characters. The text is arranged in a strict 3-row grid. The horizontal alignment (the row) is critical. Do not shift text up if a line above it is blank. On the Bottom Right of the label it has the ID number and hyphenated code.
 
     Please extract the following information and return ONLY a valid JSON object with these exact keys:
 
-    - `id_number`: The 5 to 7 digit number. (Bottom right of the label, last number)
+    - `id_number`: The 5 to 7 digit number. (Bottom right of the label, last numberst on the label).
     - `hyphenated_code`: The hyphenated code (Bottom right of the label, before  the ID Number , usually formatted like number-letters-number).
 
     - `field1`: Left Column, Row 1 (Top line)
@@ -156,6 +156,9 @@ def main():
     print("Files will NOT be moved or copied.\n")
 
     files_to_process = [p for p in input_dir.iterdir() if p.is_file() and p.suffix.lower() in SUPPORTED_EXTS]
+
+    # Sort files by name to ensure consistent processing order
+    files_to_process.sort(key=lambda p: p.name)
     total_files = len(files_to_process)
 
     if not files_to_process:
