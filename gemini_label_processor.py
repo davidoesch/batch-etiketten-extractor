@@ -54,8 +54,8 @@ def process_file(file_path: Path, output_dir: Path, client: genai.Client, curren
 
     Please extract the following information and return ONLY a valid JSON object with these exact keys:
 
-    - `id_number`: The 5 to 7 digit number.
-    - `hyphenated_code`: The hyphenated code (usually formatted like number-letters-number).
+    - `id_number`: The 5 to 7 digit number. (Bottom right of the label, last number)
+    - `hyphenated_code`: The hyphenated code (Bottom right of the label, before  the ID Number , usually formatted like number-letters-number).
 
     - `field1`: Left Column, Row 1 (Top line)
     - `field2`: Left Column, Row 2 (Middle line)
