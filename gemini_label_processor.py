@@ -4,6 +4,7 @@ import time
 import shutil
 import json
 import argparse
+import re
 from pathlib import Path
 
 # --- Dependencies ---
@@ -19,6 +20,10 @@ except ImportError:
 
 # --- Configuration ---
 SUPPORTED_EXTS = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp", ".webp"}
+
+def natural_sort_key(path: Path):
+    """Sorts files naturally so 'img_2' comes before 'img_10'."""
+    return [int(text) if text.isdigit() else text.lower() for text in re.split(r'(\d+)', path.name)]
 
 def process_file(file_path: Path, output_dir: Path, client: genai.Client, current_idx: int, total_files: int):
     """Slices the label, sends it to Gemini, and generates JSON. Safely skips already processed files."""
@@ -44,28 +49,32 @@ def process_file(file_path: Path, output_dir: Path, client: genai.Client, curren
         print(f"\nFailed to read/crop image locally: {e}")
         return
 
-    # 2. STRICT ROW-BASED GEMINI PROMPT WITH BAILOUT
+    # 2. STRICT ANCHOR-BASED GEMINI PROMPT
     prompt = """
     Look at this cropped and rotated image. We are looking for a specific white label with dot-matrix text.
 
     CRITICAL: If the image does NOT contain a white label with text (for example, if it is just a grey sleeve, a logo, or blank), you MUST return empty strings ("") for ALL fields. DO NOT invent numbers or copy examples.
 
-    If the label IS present, it has two distinct columns of text separated by a vertical divider line or a column of "¦" characters. The text is arranged in a strict 3-row grid. The horizontal alignment (the row) is critical. Do not shift text up if a line above it is blank. On the Bottom Right of the label it has the ID number and hyphenated code.
+    If the label IS present, it has two distinct columns of text. The text is arranged in a strict 3-row grid.
 
-    Please extract the following information and return ONLY a valid JSON object with these exact keys:
+    *** GRID ALIGNMENT RULES ***
+    The Left Column acts as your absolute horizontal ruler. You MUST match the text in the Right Column to the exact horizontal baselines of the Left Column:
+    - `field1`: Left Column, Top line
+    - `field2`: Left Column, Middle line
+    - `field3`: Left Column, Bottom line
 
-    - `id_number`: The 5 to 7 digit number. (Bottom right of the label, last numberst on the label).
-    - `hyphenated_code`: The hyphenated code (Bottom right of the label, before  the ID Number , usually formatted like number-letters-number).
+    - `field4`: Right Column text that is horizontally aligned with `field1`.
+    - `field5`: Right Column text that is horizontally aligned with `field2`.
+    - `field6`: Right Column text that is horizontally aligned with `field3`.
 
-    - `field1`: Left Column, Row 1 (Top line)
-    - `field2`: Left Column, Row 2 (Middle line)
-    - `field3`: Left Column, Row 3 (Bottom line)
+    CRITICAL ALIGNMENT CONSTRAINT: DO NOT let text float up. If there is text aligned with `field1` and text aligned with `field3`, but physical empty space aligned with `field2`, you MUST output `field5` as "" and put the bottom text in `field6`.
 
-    - `field4`: Right Column, Row 1 (Top line). If there is no text horizontally aligned with Row 1 here, leave this empty.
-    - `field5`: Right Column, Row 2 (Middle line). This must horizontally align with field2.
-    - `field6`: Right Column, Row 3 (Bottom line). This must horizontally align with field3.
+    *** SEPARATE CODES ***
+    Separate from this 3-row grid, on the far Bottom Right of the label, sits the ID number and hyphenated code. DO NOT place these into field4, field5, or field6.
+    - `id_number`: The 5 to 7 digit number (Bottom right, last numbers on the label).
+    - `hyphenated_code`: The hyphenated code (Bottom right, just before the ID Number).
 
-    If a specific spot in the grid is empty, leave its value as an empty string (""). Do not return conversational text, just the JSON.
+    If a specific spot in the grid is physically empty, leave its value as an empty string (""). Do not return conversational text, just the JSON.
     """
 
     max_retries = 5
@@ -157,8 +166,10 @@ def main():
 
     files_to_process = [p for p in input_dir.iterdir() if p.is_file() and p.suffix.lower() in SUPPORTED_EXTS]
 
-    # Sort files by name to ensure consistent processing order
-    files_to_process.sort(key=lambda p: p.name)
+    # --- MODIFICATION B: Robust Natural Sorting ---
+    # Ensures file_2 comes before file_10.
+    files_to_process.sort(key=natural_sort_key)
+
     total_files = len(files_to_process)
 
     if not files_to_process:
