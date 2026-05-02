@@ -8,7 +8,6 @@
     <link
         href="https://cdn.prod.website-files.com/644be81ede62f758d359ff7d/css/atelierreding.webflow.shared.8f5fd808b.min.css"
         rel="stylesheet" type="text/css">
-
     <style>
         body {
             margin: 0;
@@ -62,7 +61,6 @@
             justify-content: center;
         }
 
-        /* THE FIX: Added flex-shrink to protect the wrapper */
         #pan-zoom-wrapper {
             transform-origin: center center;
             cursor: grab;
@@ -76,7 +74,6 @@
             cursor: grabbing;
         }
 
-        /* THE FIX: Forced override of Webflow's global max-width: 100% on images */
         #current-image {
             transform: rotate(-90deg);
             display: block;
@@ -125,19 +122,50 @@
             box-sizing: border-box;
         }
 
-        .progress {
-            font-size: 1em;
-            margin-bottom: 25px;
-            color: #666;
+        .nav-controls {
             display: flex;
+            align-items: center;
             justify-content: space-between;
+            margin-bottom: 25px;
+            padding-bottom: 15px;
             border-bottom: 1px solid #ddd;
-            padding-bottom: 10px;
+        }
+
+        .nav-btn {
+            background: transparent;
+            color: #222;
+            border: 1px solid #ccc;
+            padding: 10px 16px;
+            cursor: pointer;
+            text-transform: uppercase;
+            font-size: 0.85em;
+            letter-spacing: 0.05em;
+            transition: all 0.2s;
+        }
+
+        .nav-btn:hover {
+            background: #eee;
+            border-color: #aaa;
+        }
+
+        .record-dropdown {
+            padding: 10px;
+            font-size: 0.95em;
+            border: 1px solid #ccc;
+            border-radius: 0;
+            background: #fff;
+            max-width: 50%;
+            text-align: center;
+        }
+
+        .record-dropdown:focus {
+            outline: none;
+            border-color: #222;
         }
 
         .action-btn {
-            padding: 12px 16px;
-            font-size: 0.95em;
+            padding: 16px;
+            font-size: 1em;
             cursor: pointer;
             border: 1px solid #222;
             border-radius: 0;
@@ -148,27 +176,10 @@
             transition: all 0.2s ease;
             letter-spacing: 0.05em;
             text-transform: uppercase;
-        }
-
-        .btn-prev {
-            background: transparent;
-            color: #222;
-            border: 1px solid #ccc;
-            margin-bottom: 30px;
-        }
-
-        .btn-prev:hover {
-            background: #eee;
-            border-color: #aaa;
-        }
-
-        .btn-next {
             margin-top: 15px;
-            padding: 16px;
-            font-size: 1em;
         }
 
-        .btn-next:hover {
+        .action-btn:hover {
             background: #444;
         }
 
@@ -218,12 +229,20 @@
             border-radius: 0;
             box-sizing: border-box;
             background: #fff;
-            transition: border-color 0.2s;
+            transition: all 0.2s;
         }
 
         input[type="text"]:focus {
             border-color: #222;
             outline: none;
+        }
+
+        /* Requirement A: Red styling for nodata fields */
+        .input-nodata {
+            background-color: #ffeaea !important;
+            border-color: #d9534f !important;
+            color: #d9534f !important;
+            font-weight: bold;
         }
 
         .bottom-codes {
@@ -287,7 +306,6 @@
 </head>
 
 <body>
-
     <header>
         <h2>Atelier Reding / Label QA</h2>
         <div style="font-size: 0.8em; color: #888;">Direct File Editing Active (Chrome/Edge)</div>
@@ -322,12 +340,12 @@
         </div>
 
         <div class="data-panel">
-            <div class="progress">
-                <span id="record-counter">Record 0 of 0</span>
-                <span id="filename-display" style="color: #222; font-weight: 500;"></span>
-            </div>
 
-            <button class="action-btn btn-prev" onclick="prevRecord()">&#8592; Previous Record</button>
+            <div class="nav-controls">
+                <button class="nav-btn" onclick="goPrev()">&#8592; previous record</button>
+                <select id="record-select" class="record-dropdown" onchange="jumpToRecord()"></select>
+                <button class="nav-btn" onclick="goNext()">next record &#8594;</button>
+            </div>
 
             <form id="record-form" oninput="markUnsaved()">
                 <div class="label-grid">
@@ -394,7 +412,6 @@
         imgElement.onload = function () {
             const panelWidth = imagePanel.clientWidth;
             const panelHeight = imagePanel.clientHeight;
-
             const visualWidth = imgElement.naturalHeight;
             const visualHeight = imgElement.naturalWidth;
 
@@ -444,7 +461,7 @@
 
         window.addEventListener('mouseup', () => { isDragging = false; });
 
-        // 1. Direct File System API
+        // --- DATA LOAD AND INITIALIZATION ---
         async function selectCSV() {
             try {
                 [csvFileHandle] = await window.showOpenFilePicker({
@@ -469,7 +486,6 @@
             }
         }
 
-        // 2. Check Readiness
         function checkReadiness() {
             const imgInput = document.getElementById('image-folder').files;
             if (csvFileHandle && imgInput.length > 0) {
@@ -477,12 +493,24 @@
             }
         }
 
-        // 3. Start QA
         function initializeQA() {
             const imgInput = document.getElementById('image-folder').files;
             for (let i = 0; i < imgInput.length; i++) {
                 imageFiles[imgInput[i].name.toUpperCase()] = imgInput[i];
             }
+
+            // Requirement B: Natural Sort the CSV Data by filename
+            csvData.sort((a, b) => a.filename.localeCompare(b.filename, undefined, { numeric: true, sensitivity: 'base' }));
+
+            // Populate the Dropdown Menu
+            const select = document.getElementById('record-select');
+            select.innerHTML = '';
+            csvData.forEach((row, i) => {
+                const opt = document.createElement('option');
+                opt.value = i;
+                opt.text = `${i + 1}/${csvData.length} - ${row.filename}`;
+                select.appendChild(opt);
+            });
 
             document.getElementById('setup-panel').style.display = 'none';
             document.getElementById('main-container').style.display = 'flex';
@@ -492,17 +520,33 @@
             loadRecord(currentIndex);
         }
 
-        // 4. Load Record into Form
+        // Requirement A: Function to dynamically add/remove the red warning class
+        function checkNodataStyle(inputElement) {
+            if (inputElement.value.trim() === 'nodata') {
+                inputElement.classList.add('input-nodata');
+            } else {
+                inputElement.classList.remove('input-nodata');
+            }
+        }
+
+        // Attach dynamic listener to form to check inputs as user types
+        document.getElementById('record-form').addEventListener('input', function (e) {
+            if (e.target && e.target.tagName === 'INPUT' && e.target.type === 'text') {
+                checkNodataStyle(e.target);
+            }
+        });
+
         function loadRecord(index) {
             if (index < 0 || index >= csvData.length) return;
 
             const record = csvData[index];
-            document.getElementById('record-counter').innerText = `${index + 1} / ${csvData.length}`;
-            document.getElementById('filename-display').innerText = record.filename + '.JPG';
+            document.getElementById('record-select').value = index;
 
             const fields = ['id_number', 'hyphenated_code', 'field1', 'field2', 'field3', 'field4', 'field5', 'field6'];
             fields.forEach(field => {
-                document.getElementById(field).value = record[field] || '';
+                const el = document.getElementById(field);
+                el.value = record[field] || '';
+                checkNodataStyle(el); // Check styling when loading the record
             });
             document.getElementById('qc_ok').checked = (record['QC'] === 'ok');
 
@@ -523,7 +567,28 @@
             document.getElementById('field1').focus();
         }
 
-        // 5. Update Status Tracking
+        // --- NAVIGATION (No saving) ---
+        function goPrev() {
+            if (currentIndex > 0) {
+                currentIndex--;
+                loadRecord(currentIndex);
+            }
+        }
+
+        function goNext() {
+            if (currentIndex < csvData.length - 1) {
+                currentIndex++;
+                loadRecord(currentIndex);
+            }
+        }
+
+        function jumpToRecord() {
+            const select = document.getElementById('record-select');
+            currentIndex = parseInt(select.value);
+            loadRecord(currentIndex);
+        }
+
+        // --- SAVING AND PERSISTENCE ---
         function markUnsaved() {
             hasUnsavedChanges = true;
             updateStatusUI();
@@ -540,7 +605,6 @@
             }
         }
 
-        // 6. Write Directly to Disk
         async function writeToDisk() {
             const record = csvData[currentIndex];
             const fields = ['id_number', 'hyphenated_code', 'field1', 'field2', 'field3', 'field4', 'field5', 'field6'];
@@ -575,10 +639,10 @@
             }
         }
 
-        async function prevRecord() {
-            if (hasUnsavedChanges) {
-                await writeToDisk();
-            }
+        async function saveAndPrevRecord() {
+            document.getElementById('qc_ok').checked = true;
+            await writeToDisk();
+
             if (currentIndex > 0) {
                 currentIndex--;
                 loadRecord(currentIndex);
@@ -590,7 +654,7 @@
                 if (event.key === 'Enter') {
                     event.preventDefault();
                     if (event.shiftKey) {
-                        prevRecord();
+                        saveAndPrevRecord();
                     } else {
                         saveAndNextRecord();
                     }
