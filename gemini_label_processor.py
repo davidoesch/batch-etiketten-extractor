@@ -53,9 +53,9 @@ def process_file(file_path: Path, output_dir: Path, client: genai.Client, curren
     prompt = """
     Look at this cropped and rotated image. We are looking for a specific white label with dot-matrix text.
 
-    CRITICAL: If the image does NOT contain a white label with text (for example, if it is just a grey sleeve, a logo, or blank), you MUST return empty strings ("") for ALL fields. DO NOT invent numbers or copy examples.
+    CRITICAL: If the image does NOT contain a white label with text (for example, if it is just a grey sleeve, a logo, or blank), you MUST return  string ("nodata") for ALL fields. DO NOT invent numbers or copy examples.
 
-    If the label IS present, it has two distinct columns of text. The text is arranged in a strict 3-row grid.
+    If the label IS present, it has two distinct columns of text separated by a vertical divider line or a column of "¦" characters. The text is arranged in a strict 3-row grid, with the Left Column containing 3 lines of text and the Right Column containing 3 lines of text. The horizontal alignment of the text is CRITICAL to understand which field is which.
 
     *** GRID ALIGNMENT RULES ***
     The Left Column acts as your absolute horizontal ruler. You MUST match the text in the Right Column to the exact horizontal baselines of the Left Column:
@@ -71,10 +71,10 @@ def process_file(file_path: Path, output_dir: Path, client: genai.Client, curren
 
     *** SEPARATE CODES ***
     Separate from this 3-row grid, on the far Bottom Right of the label, sits the ID number and hyphenated code. DO NOT place these into field4, field5, or field6.
-    - `id_number`: The 5 to 7 digit number (Bottom right, last numbers on the label).
+    - `id_number`: The 5 to 7 digit number (Bottom right, last numbers on the label).CRITICAL: we only deal with numbers 0-9, no letters in this field.
     - `hyphenated_code`: The hyphenated code (Bottom right, just before the ID Number).
 
-    If a specific spot in the grid is physically empty, leave its value as an empty string (""). Do not return conversational text, just the JSON.
+    If a specific spot in the grid is physically empty, leave its value as string ("nodata"). Do not return conversational text, just the JSON.
     """
 
     max_retries = 5
