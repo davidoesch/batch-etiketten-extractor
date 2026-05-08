@@ -193,19 +193,24 @@ def main():
     print("=== Bulk Label Metadata Consolidation ===\n")
 
     # Strict Key Check and Instructions
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key or api_key.strip() == "" or api_key == "testing key":
+    key_file = Path(__file__).parent / "key.txt"
+    if key_file.exists():
+        api_key = key_file.read_text(encoding="utf-8").strip()
+    else:
+        api_key = os.environ.get("GEMINI_API_KEY", "")
+
+    if not api_key or api_key == "testing key":
         print("[!] CRITICAL ERROR: No valid GEMINI_API_KEY found.")
         print("Google's Gemini API strictly requires a real API key to function, even on the Free Tier.")
         print("\nHow to fix this:")
         print("1. Get your free key from: https://aistudio.google.com/app/apikey")
-        print("2. Run this exact command in your terminal (replace with your actual key):")
-        print('   export GEMINI_API_KEY="AIzaSyYourRealKeyGoesHere..."')
-        print("3. Run this python script again.")
+        print("2. Create a file called key.txt in the same folder as this script.")
+        print("3. Paste your API key as the only content of that file and save it.")
+        print("4. Run this python script again.")
         sys.exit(1)
 
     try:
-        client = genai.Client()
+        client = genai.Client(api_key=api_key)
     except Exception as e:
         print(f"Error initializing Gemini Client: {e}")
         sys.exit(1)

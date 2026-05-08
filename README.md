@@ -47,25 +47,15 @@ pip install pillow google-genai
 
 ## Configuration
 
-Set your API key as an environment variable:
+Create a file called `key.txt` in the same folder as the script and paste your Gemini API key as the only line:
 
-### Linux / macOS
-
-```bash
-export GEMINI_API_KEY="your_api_key_here"
+```
+AIzaSyYourRealKeyGoesHere...
 ```
 
-### Windows (PowerShell)
+`key.txt` is listed in `.gitignore` and will never be committed to version control.
 
-```powershell
-$env:GEMINI_API_KEY="your_api_key_here"
-```
-
-### Windows (Command Prompt)
-
-```cmd
-set GEMINI_API_KEY=your_api_key_here
-```
+As a fallback the script also accepts the key via the `GEMINI_API_KEY` environment variable (useful for CI or containerised environments).
 
 ## Usage
 
@@ -197,14 +187,15 @@ You will see a bunch of text scroll by as it downloads them. Wait until it stops
 
 **Step 6: Run the Script\!**
 
-Now for the magic. We will give the terminal your Google Key, and then tell it to process your folder of photos.
+Now for the magic. We will save your Google Key into a file, and then tell the script to process your folder of photos.
 
-**First, give it the key:**
+**First, save your key:**
 
-*(Replace YOUR\_KEY\_HERE with the long code you saved in Step 3, keeping the quotation marks).*
-
-* **Windows:** Type set GEMINI\_API\_KEY="YOUR\_KEY\_HERE" and hit Enter.  
-* **Mac:** Type export GEMINI\_API\_KEY="YOUR\_KEY\_HERE" and hit Enter.
+1. Open the project folder on your Desktop (e.g. `batch-etiketten-extractor`).  
+2. Create a new plain text file called **`key.txt`** (use Notepad on Windows or TextEdit in plain-text mode on Mac).  
+3. Paste the long API key you saved in Step 3 as the only line in the file and save it.  
+   The file should contain only: `AIzaSyYourRealKeyGoesHere...`  
+4. Make sure the filename is exactly `key.txt` (not `key.txt.txt`).
 
 **Second, run the script:**
 
