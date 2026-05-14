@@ -95,6 +95,88 @@ error_files.txt
 
 Using a paid API tier allows reduction or removal of throttling delays.
 
+---
+
+## Post-processing Tools
+
+### clean.py — Sanitise and normalise the result CSV
+
+Reads the `_result.csv` produced by the main processor and writes a `_cleaned.csv` with the following fixes applied to every row:
+
+| Rule | What it does |
+|------|-------------|
+| Strip junk characters | Removes `\|`, `¦`, leading `:` / `;` / `I ` / `! ` from every field |
+| Empty → nodata | Blank or single-character garbage becomes `"nodata"` |
+| field6 dedup A | Removes the exact `id_number` string from `field6` when present (e.g. `"2-DU-90 11214B"` → `"2-DU-90"` when `id_number` is `"11214B"`) |
+| field6 dedup B | Removes the exact `hyphenated_code` string from `field6` when present (e.g. `"2-DU-90 11214B"` → `"11214B"` when `hyphenated_code` is `"2-DU-90"`) |
+| OCR fix B→8 | Replaces `B` with `8` in `id_number` (e.g. `"11214B"` → `"112148"`) |
+| OCR fix Z→2 | Replaces `Z` with `2` in `id_number` (e.g. `"11214Z"` → `"112142"`) |
+| Sort by filename | Rows are sorted numerically by the `filename` column before writing |
+
+**Setup:** edit the `csv_file` path at the top of the script to point to your result CSV, then run:
+
+```bash
+python clean.py
+```
+
+Output is written next to the input file with `_cleaned` appended to the filename.
+
+---
+
+### find_missing.py — Identify gaps in the filename sequence
+
+Parses the `filename` column (treated as integers) and reports which numbers in the range `[1, MAX]` are absent — useful for spotting images that were skipped or failed.
+
+```bash
+# Print missing numbers to stdout
+python find_missing.py /path/to/result.csv
+
+# Specify an explicit upper bound (e.g. you know there should be 7023 images)
+python find_missing.py /path/to/result.csv 7023
+
+# Save missing numbers to a text file (one per line)
+python find_missing.py /path/to/result.csv 7023 --out missing.txt
+```
+
+Sample output:
+
+```
+Present entries : 6981
+Range checked   : 1 to 7023
+Missing count   : 42
+Missing numbers:
+14
+203
+...
+```
+
+---
+
+### plot_missing.py — Visualise gaps as a diagnostic chart
+
+Generates a four-panel PNG showing where gaps are concentrated across the full sequence. Requires `matplotlib`.
+
+```bash
+pip install matplotlib
+
+# Auto-detect range from CSV
+python plot_missing.py /path/to/result.csv
+
+# Explicit upper bound, custom output path
+python plot_missing.py /path/to/result.csv 7023 --out gaps.png
+```
+
+Outputs two files:
+
+* `missing_gaps.png` (or the path given with `--out`) — four-panel figure:
+  * Presence strip (green = present, red = missing)
+  * Gap-size histogram
+  * Gap size vs. position scatter
+  * Top 20 largest gaps as a ranked bar chart
+* `missing_gaps.csv` — machine-readable gap report with columns `gap_start`, `gap_end`, `gap_size`
+
+---
+
 ## Limitations
 
 ### Hardcoded layout assumptions
